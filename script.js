@@ -1,4 +1,19 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Auth State ---
+    const authScreen = document.getElementById('auth-screen');
+    const appContainer = document.querySelector('.app-container');
+    const loginForm = document.getElementById('login-form');
+    const signupForm = document.getElementById('signup-form');
+    const showSignupLink = document.getElementById('show-signup');
+    const showLoginLink = document.getElementById('show-login');
+    const loginBtn = document.getElementById('login-btn');
+    const signupBtn = document.getElementById('signup-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const authError = document.getElementById('auth-error');
+    const currentUserNameDisplay = document.getElementById('current-user-name');
+
+    let currentUser = JSON.parse(sessionStorage.getItem('financeCurrentUser')) || null;
+
     // --- Elements ---
     // Inputs
     const incomeInput = document.getElementById('income');
@@ -6,6 +21,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const billsInput = document.getElementById('bills');
     const autoInput = document.getElementById('auto');
     const foodInput = document.getElementById('food');
+    const subsInput = document.getElementById('subs');
+    const leisureInput = document.getElementById('leisure');
+    const shoppingInput = document.getElementById('shopping');
     const extraInput = document.getElementById('extra');
 
 
@@ -32,9 +50,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const bills = parseFloat(billsInput.value) || 0;
         const auto = parseFloat(autoInput.value) || 0;
         const food = parseFloat(foodInput.value) || 0;
+        const subs = parseFloat(subsInput.value) || 0;
+        const leisure = parseFloat(leisureInput.value) || 0;
+        const shopping = parseFloat(shoppingInput.value) || 0;
         const extra = parseFloat(extraInput.value) || 0;
 
-        const totalExpenses = rent + bills + auto + food + extra;
+        // Deductions for Saving Goals
+        const goals = JSON.parse(localStorage.getItem(getStorageKey('financeGoals')) || '[]');
+        const totalGoalDeposits = goals.reduce((sum, goal) => {
+            return !goal.isCompleted ? sum + (parseFloat(goal.deposit) || 0) : sum;
+        }, 0);
+
+        const totalExpenses = rent + bills + auto + food + subs + leisure + shopping + extra + totalGoalDeposits;
         const remaining = income - totalExpenses;
 
         // Mostra risultati
@@ -137,10 +164,420 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedDateInfo = null;
 
     // Carica budget mensili o array vuoto
-    let monthlyBudgets = JSON.parse(localStorage.getItem('financeMonthlyBudgets')) || {};
+    const getStorageKey = (key) => currentUser ? `${currentUser.username}_${key}` : null;
 
-    // Carica eventi o array vuoto
-    let events = JSON.parse(localStorage.getItem('financeEvents')) || {};
+    let monthlyBudgets = {};
+    let events = {};
+
+    function loadUserData() {
+        if (!currentUser) return;
+        monthlyBudgets = JSON.parse(localStorage.getItem(getStorageKey('financeMonthlyBudgets'))) || {};
+        events = JSON.parse(localStorage.getItem(getStorageKey('financeEvents'))) || {};
+    }
+
+    // --- Auth Logic ---
+    function showAuthError(msg) {
+        authError.textContent = msg;
+        authError.classList.remove('hidden');
+    }
+
+    function toggleAuthForms(showSignup) {
+        authError.classList.add('hidden');
+        if (showSignup) {
+            loginForm.classList.add('hidden');
+            signupForm.classList.remove('hidden');
+        } else {
+            loginForm.classList.remove('hidden');
+            signupForm.classList.add('hidden');
+        }
+    }
+
+    function handleSignup() {
+        const username = document.getElementById('signup-username').value.trim();
+        const password = document.getElementById('signup-password').value.trim();
+
+        if (!username || !password) {
+            showAuthError("Inserisci tutti i campi.");
+            return;
+        }
+
+        let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
+        if (users.find(u => u.username === username)) {
+            showAuthError("Username già esistente.");
+            return;
+        }
+
+        users.push({ username, password });
+        localStorage.setItem('financeUsers', JSON.stringify(users));
+
+        // Auto login
+        doLogin(username);
+    }
+
+    function handleLogin() {
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value.trim();
+
+        let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
+        const user = users.find(u => u.username === username && u.password === password);
+
+        if (user) {
+            doLogin(username);
+        } else {
+            showAuthError("Username o password errati.");
+        }
+    }
+
+    function doLogin(username) {
+        currentUser = { username };
+        sessionStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
+        checkAuthStatus();
+    }
+
+    function handleLogout() {
+        sessionStorage.removeItem('financeCurrentUser');
+        location.reload();
+    }
+
+    function checkAuthStatus() {
+        if (currentUser) {
+            authScreen.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+            currentUserNameDisplay.textContent = currentUser.username;
+            loadUserData();
+            loadCurrentMonthBudget();
+            loadGoals();
+            renderCalendar();
+            initializeLastValues();
+        } else {
+            authScreen.classList.remove('hidden');
+            appContainer.classList.add('hidden');
+        }
+    }
+
+    // Auth Listeners
+    showSignupLink.addEventListener('click', (e) => { e.preventDefault(); toggleAuthForms(true); });
+    showLoginLink.addEventListener('click', (e) => { e.preventDefault(); toggleAuthForms(false); });
+    signupBtn.addEventListener('click', handleSignup);
+    loginBtn.addEventListener('click', handleLogin);
+
+    // NEW: User Menu & Dropdown logic
+    const userMenuToggle = document.getElementById('user-menu-toggle');
+    const userDropdown = document.getElementById('user-dropdown');
+    const logoutBtnDropdown = document.getElementById('logout-btn-dropdown');
+
+    if (userMenuToggle) {
+        userMenuToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userDropdown.classList.toggle('hidden');
+        });
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', () => {
+        if (userDropdown) userDropdown.classList.add('hidden');
+    });
+
+    if (logoutBtnDropdown) {
+        logoutBtnDropdown.addEventListener('click', handleLogout);
+    }
+
+    // NEW: Theme Switching logic
+    const themeBtns = document.querySelectorAll('.theme-btn');
+
+    function setTheme(themeName) {
+        if (themeName === 'black') {
+            document.body.classList.add('theme-black');
+        } else {
+            document.body.classList.remove('theme-black');
+        }
+
+        // Update ALL theme buttons
+        document.querySelectorAll('.theme-btn').forEach(btn => {
+            if (btn.getAttribute('data-theme') === themeName) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+
+        // Persist theme
+        localStorage.setItem('financeTheme', themeName);
+    }
+
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const theme = btn.getAttribute('data-theme');
+            setTheme(theme);
+        });
+    });
+
+    // --- Saving Goals Logic ---
+    const addGoalBtn = document.getElementById('add-goal-btn');
+    const goalNameInput = document.getElementById('goal-name');
+    const goalAmountInput = document.getElementById('goal-amount');
+    const goalMonthsInput = document.getElementById('goal-months');
+    const goalsContainer = document.getElementById('active-goals-grid');
+
+    function loadGoals() {
+        if (!currentUser) return;
+        const goals = JSON.parse(localStorage.getItem(getStorageKey('financeGoals')) || '[]');
+        renderGoals(goals);
+    }
+
+    function renderGoals(goals) {
+        goalsContainer.innerHTML = '';
+
+        // Get current monthly savings (before goal deductions to show feasibility)
+        const income = parseFloat(incomeInput.value) || 0;
+        const rent = parseFloat(rentInput.value) || 0;
+        const bills = parseFloat(billsInput.value) || 0;
+        const auto = parseFloat(autoInput.value) || 0;
+        const food = parseFloat(foodInput.value) || 0;
+        const subs = parseFloat(subsInput.value) || 0;
+        const leisure = parseFloat(leisureInput.value) || 0;
+        const shopping = parseFloat(shoppingInput.value) || 0;
+        const extra = parseFloat(extraInput.value) || 0;
+        const baseExpenses = rent + bills + auto + food + subs + leisure + shopping + extra;
+        const availableForGoals = income - baseExpenses;
+
+        goals.forEach(goal => {
+            const isCompleted = goal.isCompleted || false;
+            const deposit = parseFloat(goal.deposit) || 0;
+            const progressPercent = Math.min(100, Math.floor((goal.savedAmount / goal.amount) * 100) || 0);
+
+            // Prediction based on set deposit
+            const monthsLeft = deposit > 0 ? Math.ceil((goal.amount - (goal.savedAmount || 0)) / deposit) : '∞';
+
+            let statusClass = 'status-on-track';
+            let statusText = 'In linea';
+
+            if (!isCompleted && deposit > availableForGoals) {
+                statusClass = 'status-behind';
+                statusText = 'Budget Insufficiente';
+            }
+
+            const goalCard = document.createElement('div');
+            goalCard.className = `goal-card glass-panel ${isCompleted ? 'completed' : ''}`;
+            goalCard.onclick = (e) => {
+                if (e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+                    depositToGoal('${goal.id}');
+                }
+            };
+
+            goalCard.innerHTML = `
+                <button class="delete-goal" onclick="deleteGoal('${goal.id}')">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <h3>${goal.name}</h3>
+                    ${isCompleted ? '<span class="status-badge status-on-track">Completata</span>' : `<span class="status-badge ${statusClass}">${statusText}</span>`}
+                </div>
+                <div class="goal-progress-container">
+                    <div class="goal-progress-info">
+                        <span>Avanzamento Target (${currency.format(goal.savedAmount || 0)})</span>
+                        <span>${progressPercent}%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" style="width: ${progressPercent}%"></div>
+                    </div>
+                </div>
+                <div class="goal-prediction">
+                    <div class="prediction-item">
+                        <i class="fa-solid fa-piggy-bank"></i>
+                        <span>Pianificato: <b class="editable-deposit" onclick="editGoalDeposit('${goal.id}')">${currency.format(deposit)}/mese</b></span>
+                    </div>
+                    <div class="prediction-item" style="margin-top: 0.5rem;">
+                        <i class="fa-solid fa-clock"></i>
+                        <span>Tempo stimato: <b>${isCompleted ? 'Traguardo raggiunto!' : (monthsLeft + ' mesi')}</b></span>
+                    </div>
+                    <div class="prediction-item" style="margin-top: 0.5rem; justify-content: space-between;">
+                        <span><i class="fa-solid fa-euro-sign"></i> Totale: <b>${currency.format(goal.amount)}</b></span>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="primary-btn" style="width: auto; padding: 5px 15px; font-size: 0.8rem; background: var(--primary-light);" onclick="depositToGoal('${goal.id}')">Deposita</button>
+                            ${!isCompleted ? `<button class="primary-btn" style="width: auto; padding: 5px 15px; font-size: 0.8rem;" onclick="toggleGoalComplete('${goal.id}')">Completa</button>` : `<button class="primary-btn" style="width: auto; padding: 5px 15px; font-size: 0.8rem; background: var(--text-muted);" onclick="toggleGoalComplete('${goal.id}')">Ripristina</button>`}
+                        </div>
+                    </div>
+                </div>
+            `;
+            goalsContainer.appendChild(goalCard);
+        });
+    }
+
+    window.depositToGoal = function (id) {
+        const goals = JSON.parse(localStorage.getItem(getStorageKey('financeGoals')) || '[]');
+        const goal = goals.find(g => g.id === id);
+        if (!goal || goal.isCompleted) return;
+
+        const amount = prompt(`Quanto vuoi depositare oggi per "${goal.name}"?`, goal.deposit || 0);
+        if (amount !== null) {
+            const val = parseFloat(amount);
+            if (!isNaN(val) && val > 0) {
+                // 1. Update Goal
+                goal.savedAmount = (parseFloat(goal.savedAmount) || 0) + val;
+                if (goal.savedAmount >= goal.amount) {
+                    goal.savedAmount = goal.amount;
+                    goal.isCompleted = true;
+                }
+
+                // 2. Add to Extra Expenses in Budget
+                const currentExtra = parseFloat(extraInput.value) || 0;
+                extraInput.value = currentExtra + val;
+                saveCurrentMonthBudget();
+
+                // 3. Add to Calendar
+                const today = new Date();
+                const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                if (!events[dateStr]) events[dateStr] = [];
+                events[dateStr].push({
+                    category: 'extra',
+                    amount: val,
+                    isGoal: true,
+                    goalName: goal.name
+                });
+
+                // Persist
+                localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
+                localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+
+                // Refresh
+                loadGoals();
+                recalculateSummary();
+                renderCalendar();
+                initializeLastValues(); // Sync Magic Sync
+
+                if (goal.isCompleted) {
+                    alert(`Congratulazioni! Hai completato l'obiettivo: ${goal.name}`);
+                }
+            } else {
+                alert("Inserisci un importo valido.");
+            }
+        }
+    };
+
+    window.editGoalDeposit = function (id) {
+        const goals = JSON.parse(localStorage.getItem(getStorageKey('financeGoals')) || '[]');
+        const goal = goals.find(g => g.id === id);
+        if (!goal) return;
+
+        const newDeposit = prompt(`Quanto vuoi depositare mensilmente per "${goal.name}"?`, goal.deposit);
+        if (newDeposit !== null) {
+            const val = parseFloat(newDeposit);
+            if (!isNaN(val) && val >= 0) {
+                goal.deposit = val;
+                localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
+                loadGoals();
+                recalculateSummary();
+            } else {
+                alert("Inserisci un importo valido.");
+            }
+        }
+    };
+
+    window.toggleGoalComplete = function (id) {
+        const goals = JSON.parse(localStorage.getItem(getStorageKey('financeGoals')) || '[]');
+        const goal = goals.find(g => g.id === id);
+        if (!goal) return;
+
+        goal.isCompleted = !goal.isCompleted;
+        if (goal.isCompleted) {
+            goal.savedAmount = goal.amount; // Mark as fully saved
+        } else {
+            goal.savedAmount = 0; // Reset or keep partial? Let's reset for simplicity
+        }
+
+        localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
+        loadGoals();
+        recalculateSummary();
+    };
+
+    function addGoal() {
+        const name = goalNameInput.value.trim();
+        const amount = parseFloat(goalAmountInput.value);
+        const months = parseInt(goalMonthsInput.value);
+        const depositInput = document.getElementById('goal-deposit');
+        const deposit = parseFloat(depositInput.value) || 0;
+
+        if (!name || isNaN(amount) || isNaN(months) || amount <= 0 || months <= 0) {
+            alert('Per favore inserisci dati validi per l\'obiettivo.');
+            return;
+        }
+
+        const goals = JSON.parse(localStorage.getItem(getStorageKey('financeGoals')) || '[]');
+        const newGoal = {
+            id: Date.now().toString(),
+            name,
+            amount,
+            months,
+            deposit,
+            savedAmount: 0,
+            isCompleted: false,
+            createdAt: new Date().toISOString()
+        };
+
+        goals.push(newGoal);
+        localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
+
+        goalNameInput.value = '';
+        goalAmountInput.value = '';
+        goalMonthsInput.value = '';
+        depositInput.value = '';
+
+        loadGoals();
+        recalculateSummary();
+    }
+
+    // --- Auto-calculation for Goal Deposit ---
+    function updateSuggestedDeposit() {
+        const amount = parseFloat(goalAmountInput.value) || 0;
+        const months = parseInt(goalMonthsInput.value) || 0;
+        const depositInput = document.getElementById('goal-deposit');
+
+        if (amount > 0 && months > 0) {
+            const suggested = (amount / months).toFixed(2);
+            depositInput.value = suggested;
+        }
+    }
+
+    if (goalAmountInput) goalAmountInput.addEventListener('input', updateSuggestedDeposit);
+    if (goalMonthsInput) goalMonthsInput.addEventListener('input', updateSuggestedDeposit);
+
+    // Expose deleteGoal to global scope for onclick
+    window.deleteGoal = function (id) {
+        if (!confirm('Eliminare questo obiettivo?')) return;
+        let goals = JSON.parse(localStorage.getItem(getStorageKey('financeGoals')) || '[]');
+        goals = goals.filter(g => g.id !== id);
+        localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
+        loadGoals();
+    };
+
+    if (addGoalBtn) {
+        addGoalBtn.addEventListener('click', addGoal);
+    }
+
+    // Load saved theme
+    const savedTheme = localStorage.getItem('financeTheme') || 'default';
+    setTheme(savedTheme);
+
+    // Password Toggle Listeners
+    document.querySelectorAll('.password-toggle').forEach(button => {
+        button.addEventListener('click', () => {
+            const targetId = button.getAttribute('data-target');
+            const input = document.getElementById(targetId);
+            const icon = button.querySelector('i');
+
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        });
+    });
 
     // --- Magic Sync State ---
     let lastInputValues = {};
@@ -164,10 +601,13 @@ document.addEventListener('DOMContentLoaded', () => {
             bills: parseFloat(billsInput.value) || 0,
             auto: parseFloat(autoInput.value) || 0,
             food: parseFloat(foodInput.value) || 0,
+            subs: parseFloat(subsInput.value) || 0,
+            leisure: parseFloat(leisureInput.value) || 0,
+            shopping: parseFloat(shoppingInput.value) || 0,
             extra: parseFloat(extraInput.value) || 0
         };
 
-        localStorage.setItem('financeMonthlyBudgets', JSON.stringify(monthlyBudgets));
+        localStorage.setItem(getStorageKey('financeMonthlyBudgets'), JSON.stringify(monthlyBudgets));
     }
 
     function loadCurrentMonthBudget() {
@@ -176,7 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const month = currentDate.getMonth();
         const key = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-        const budget = monthlyBudgets[key] || { income: '', rent: '', bills: '', auto: '', food: '', extra: '' };
+        const budget = monthlyBudgets[key] || { income: '', rent: '', bills: '', auto: '', food: '', subs: '', leisure: '', shopping: '', extra: '' };
 
         // Se 0 nel salvataggio, lo mostriamo vuoto per pulizia a meno che non fosse intenzionale, ma lasciamo il fallback a stringa vuota per i mesi nuovi
         incomeInput.value = budget.income || '';
@@ -184,6 +624,9 @@ document.addEventListener('DOMContentLoaded', () => {
         billsInput.value = budget.bills || '';
         autoInput.value = budget.auto || '';
         foodInput.value = budget.food || '';
+        subsInput.value = budget.subs || '';
+        leisureInput.value = budget.leisure || '';
+        shoppingInput.value = budget.shopping || '';
         extraInput.value = budget.extra || '';
 
         // Mostra il summary se ci sono dati caricati
@@ -191,7 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Salva automaticamente input manuali
-    const allBudgetInputs = [incomeInput, rentInput, billsInput, autoInput, foodInput, extraInput];
+    const allBudgetInputs = [incomeInput, rentInput, billsInput, autoInput, foodInput, subsInput, leisureInput, shoppingInput, extraInput];
     allBudgetInputs.forEach(input => {
         if (input) {
             input.addEventListener('change', saveCurrentMonthBudget);
@@ -224,7 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         amount: Math.abs(delta)
                     });
 
-                    localStorage.setItem('financeEvents', JSON.stringify(events));
+                    localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
                     renderCalendar();
 
                     // Aggiorna valore precedente per non farlo ricalcolare al "prossimo" cambio
@@ -247,6 +690,9 @@ document.addEventListener('DOMContentLoaded', () => {
         'bills': 'Bollette',
         'auto': 'Auto / Trasporti',
         'food': 'Spesa / Cibo',
+        'subs': 'Abbonamenti',
+        'leisure': 'Svago',
+        'shopping': 'Shopping',
         'extra': 'Spese Extra',
         'other': 'Altro'
     };
@@ -258,6 +704,9 @@ document.addEventListener('DOMContentLoaded', () => {
         'bills': 'expense',
         'auto': 'expense',
         'food': 'expense',
+        'subs': 'expense',
+        'leisure': 'expense',
+        'shopping': 'expense',
         'extra': 'expense',
         'other': 'other'
     };
@@ -316,7 +765,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         amountStr = ` ${prefix}€${evt.amount}`;
                     }
 
-                    const titleText = categoryNames[evt.category] || 'Altro';
+                    const titleText = evt.isGoal ? 'Spese Obiettivo' : (categoryNames[evt.category] || 'Altro');
                     evtDiv.textContent = `${titleText}${amountStr}`;
 
                     // Impediamo il click event bubble dalla griglia per far aprire sempre la Dettagli Modal per uniformità
@@ -370,7 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const prefix = type === 'expense' ? '-' : (type === 'income' ? '+' : '');
                         amountStr = ` ${prefix}€${evt.amount}`;
                     }
-                    const titleText = categoryNames[evt.category] || 'Altro';
+                    const titleText = evt.isGoal ? `Spesa Obiettivo: ${evt.goalName || ''}` : (categoryNames[evt.category] || 'Altro');
 
                     evtItem.innerHTML = `
                         <div>
@@ -398,7 +847,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             events[dateStr].splice(index, 1);
                             if (events[dateStr].length === 0) delete events[dateStr];
-                            localStorage.setItem('financeEvents', JSON.stringify(events));
+                            localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
                             renderCalendar();
                             openDayDetailsModal(dateStr, day, month, year); // Refresh della vista
                         }
@@ -470,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Svuota gli eventi di questa giornata in modo robusto
                     delete events[selectedDateInfo];
-                    localStorage.setItem('financeEvents', JSON.stringify(events));
+                    localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
 
                     // Chiudi la modale dettaglio giorno dato che è vuota
                     if (dayDetailsModal) dayDetailsModal.classList.add('hidden');
@@ -514,7 +963,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 events[selectedDateInfo].push(newEvent);
-                localStorage.setItem('financeEvents', JSON.stringify(events));
+                localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
                 renderCalendar();
                 if (eventModal) eventModal.classList.add('hidden');
 
@@ -572,6 +1021,9 @@ document.addEventListener('DOMContentLoaded', () => {
             'bills': 0,
             'auto': 0,
             'food': 0,
+            'subs': 0,
+            'leisure': 0,
+            'shopping': 0,
             'extra': 0,
             'other': 0
         };
@@ -588,9 +1040,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 expensesByCategory['bills'] += (parseFloat(budget.bills) || 0);
                 expensesByCategory['auto'] += (parseFloat(budget.auto) || 0);
                 expensesByCategory['food'] += (parseFloat(budget.food) || 0);
+                expensesByCategory['subs'] += (parseFloat(budget.subs) || 0);
+                expensesByCategory['leisure'] += (parseFloat(budget.leisure) || 0);
+                expensesByCategory['shopping'] += (parseFloat(budget.shopping) || 0);
                 expensesByCategory['extra'] += (parseFloat(budget.extra) || 0);
 
-                if (budget.income || budget.rent || budget.bills || budget.auto || budget.food || budget.extra) {
+                if (budget.income || budget.rent || budget.bills || budget.auto || budget.food || budget.subs || budget.leisure || budget.shopping || budget.extra) {
                     hasData = true;
                 }
             }
@@ -654,6 +1109,9 @@ document.addEventListener('DOMContentLoaded', () => {
             'bills': { bg: 'rgba(245, 158, 11, 0.7)', border: '#f59e0b' }, // Orange/Warning
             'auto': { bg: 'rgba(56, 189, 248, 0.7)', border: '#38bdf8' }, // Sky Blue
             'food': { bg: 'rgba(16, 185, 129, 0.7)', border: '#10b981' }, // Emerald / Success
+            'subs': { bg: 'rgba(236, 72, 153, 0.7)', border: '#ec4899' }, // Pink
+            'leisure': { bg: 'rgba(249, 115, 22, 0.7)', border: '#f97316' }, // Orange
+            'shopping': { bg: 'rgba(139, 92, 246, 0.7)', border: '#8b5cf6' }, // Violet
             'extra': { bg: 'rgba(168, 85, 247, 0.7)', border: '#a855f7' }, // Purple
             'other': { bg: 'rgba(148, 163, 184, 0.7)', border: '#94a3b8' } // Slate
         };
@@ -746,13 +1204,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (let m = 0; m < 12; m++) {
             const key = `${year}-${String(m + 1).padStart(2, '0')}`;
-            const budget = monthlyBudgets[key] || { income: 0, rent: 0, bills: 0, auto: 0, food: 0, extra: 0 };
+            const budget = monthlyBudgets[key] || { income: 0, rent: 0, bills: 0, auto: 0, food: 0, subs: 0, leisure: 0, shopping: 0, extra: 0 };
 
             let monthIncome = parseFloat(budget.income) || 0;
             let monthExpenses = (parseFloat(budget.rent) || 0) +
                 (parseFloat(budget.bills) || 0) +
                 (parseFloat(budget.auto) || 0) +
                 (parseFloat(budget.food) || 0) +
+                (parseFloat(budget.subs) || 0) +
+                (parseFloat(budget.leisure) || 0) +
+                (parseFloat(budget.shopping) || 0) +
                 (parseFloat(budget.extra) || 0);
 
             // Aggiungi solo eventi 'other' (gli altri sono già nel budget sopra)
