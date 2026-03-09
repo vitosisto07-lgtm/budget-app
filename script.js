@@ -142,6 +142,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Carica eventi o array vuoto
     let events = JSON.parse(localStorage.getItem('financeEvents')) || {};
 
+    // --- Magic Sync State ---
+    let lastInputValues = {};
+    function initializeLastValues() {
+        allBudgetInputs.forEach(input => {
+            if (input) {
+                lastInputValues[input.id] = parseFloat(input.value) || 0;
+            }
+        });
+    }
+
     function saveCurrentMonthBudget() {
         if (!currentDate) return;
         const year = currentDate.getFullYear();
@@ -189,6 +199,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- Magic Sync: Automatic Event Recording ---
+    allBudgetInputs.forEach(input => {
+        if (input) {
+            input.addEventListener('change', () => {
+                const newVal = parseFloat(input.value) || 0;
+                const oldVal = lastInputValues[input.id] || 0;
+                const delta = newVal - oldVal;
+
+                if (delta !== 0) {
+                    const today = new Date();
+                    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+                    if (!events[dateStr]) events[dateStr] = [];
+
+                    // Tipo di evento in base alla categoria e al delta
+                    let type = delta > 0 ? 'expense' : 'refund';
+                    if (input.id === 'income') {
+                        type = delta > 0 ? 'income' : 'expense'; // Delta positivo su income è un'entrata
+                    }
+
+                    events[dateStr].push({
+                        category: input.id,
+                        amount: Math.abs(delta)
+                    });
+
+                    localStorage.setItem('financeEvents', JSON.stringify(events));
+                    renderCalendar();
+
+                    // Aggiorna valore precedente per non farlo ricalcolare al "prossimo" cambio
+                    lastInputValues[input.id] = newVal;
+                }
+            });
+        }
+    });
 
 
     const monthNames = [
@@ -348,6 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     targetInput.value = Math.max(0, currentVal - parseFloat(evt.amount));
                                     saveCurrentMonthBudget();
                                     recalculateSummary();
+                                    initializeLastValues(); // SINCRONIZZAZIONE: evita che il Magic Sync creda ci sia di nuovo una spesa
                                 }
                             }
 
@@ -421,6 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     saveCurrentMonthBudget();
                     recalculateSummary();
+                    initializeLastValues(); // SINCRONIZZAZIONE TOTALE
 
                     // Svuota gli eventi di questa giornata in modo robusto
                     delete events[selectedDateInfo];
@@ -759,4 +805,5 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inizializza Calendario e Budget di questo mese
     loadCurrentMonthBudget();
     renderCalendar();
+    initializeLastValues(); // Cattura i valori iniziali per il Magic Sync
 });

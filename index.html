@@ -61,21 +61,23 @@
                     <div class="guide-grid"
                         style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-top: 3rem;">
                         <div class="guide-card" style="border-left: 4px solid var(--primary);">
-                            <h3><i class="fa-solid fa-calculator" style="color: var(--primary);"></i> Monitoraggio
+                            <h3>&nbsp;&nbsp;<i class="fa-solid fa-calculator" style="color: var(--primary);">&nbsp;</i>
+                                Monitoraggio
                                 Budget</h3>
                             <p>Inserisci il tuo reddito e le spese mensili fisse. Il nostro algoritmo calcolerà
-                                automaticamente il saldo rimanente e ti fornirà suggerimenti intelligenti basati sulla
-                                regola del 50/30/20.</p>
+                                automaticamente il saldo rimanente e ti fornirà suggerimenti intelligenti.</p>
                         </div>
                         <div class="guide-card" style="border-left: 4px solid var(--secondary);">
-                            <h3><i class="fa-regular fa-calendar-days" style="color: var(--secondary);"></i> Calendario
+                            <h3>&nbsp;&nbsp;<i class="fa-regular fa-calendar-days"
+                                    style="color: var(--secondary);">&nbsp;</i> Calendario
                                 Dinamico</h3>
                             <p>Registra entrate extra o spese impreviste direttamente sul calendario. Ogni inserimento o
                                 eliminazione aggiorna istantaneamente il tuo budget mensile per una precisione
                                 millimetrica.</p>
                         </div>
                         <div class="guide-card" style="border-left: 4px solid var(--success);">
-                            <h3><i class="fa-solid fa-chart-pie" style="color: var(--success);"></i> Analisi Statistica
+                            <h3>&nbsp;&nbsp;<i class="fa-solid fa-chart-pie" style="color: var(--success);">&nbsp;</i>
+                                Analisi Statistica
                             </h3>
                             <p>Visualizza graficamente l'andamento delle tue spese distribuite per categoria. Analizza
                                 il risparmio netto mese dopo mese e scopri dove puoi ottimizzare per far crescere i tuoi
@@ -135,65 +137,57 @@
                         <label for="extra"><i class="fa-solid fa-plus"></i> Extra</label>
                         <input type="number" id="extra" class="expense-input" placeholder="0" min="0">
                     </div>
-                    <div>
+                </section>
 
+                <!-- Resoconto -->
+                <section id="summary-section" class="glass-panel summary-section hidden">
+                    <h2><i class="fa-solid fa-chart-line"></i> Resoconto</h2>
+
+                    <div class="summary-cards">
+                        <div class="summary-card">
+                            <span class="label">Entrate</span>
+                            <span class="value success" id="summary-income">€0.00</span>
+                        </div>
+                        <div class="summary-card">
+                            <span class="label">Uscite</span>
+                            <span class="value danger" id="summary-expenses">€0.00</span>
+                        </div>
+                        <div class="summary-card main-card">
+                            <span class="label">Rimanenza Mensile</span>
+                            <span class="value primary" id="summary-remaining">€0.00</span>
+                        </div>
+                    </div>
+
+                    <div class="advice-box" id="advice-box">
+                        <h3><i class="fa-solid fa-lightbulb"></i> Suggerimenti per Risparmiare</h3>
+                        <ul id="advice-list">
+                            <!-- Suggerimenti dinamici -->
+                        </ul>
                     </div>
                 </section>
 
-                <!-- Colonna Destra: Resoconto e AI -->
-                <div class="right-column">
-
-                    <!-- Resoconto (Inizialmente Nascosto) -->
-                    <section id="summary-section" class="glass-panel summary-section hidden">
-                        <h2><i class="fa-solid fa-chart-line"></i> Resoconto</h2>
-
-                        <div class="summary-cards">
-                            <div class="summary-card">
-                                <span class="label">Entrate</span>
-                                <span class="value success" id="summary-income">€0.00</span>
-                            </div>
-                            <div class="summary-card">
-                                <span class="label">Uscite</span>
-                                <span class="value danger" id="summary-expenses">€0.00</span>
-                            </div>
-                            <div class="summary-card main-card">
-                                <span class="label">Rimanenza Mensile</span>
-                                <span class="value primary" id="summary-remaining">€0.00</span>
-                            </div>
-                        </div>
-
-                        <div class="advice-box" id="advice-box">
-                            <h3><i class="fa-solid fa-lightbulb"></i> Suggerimenti per Risparmiare</h3>
-                            <ul id="advice-list">
-                                <!-- Suggerimenti dinamici -->
-                            </ul>
-                        </div>
-                    </section>
-
-                    <!-- Calendario -->
-                    <section class="glass-panel calendar-section">
-                        <div class="calendar-header">
-                            <button id="prev-month" class="icon-btn" aria-label="Mese precedente"><i
-                                    class="fa-solid fa-chevron-left"></i></button>
-                            <h2 id="calendar-month-year">Mese Anno</h2>
-                            <button id="next-month" class="icon-btn" aria-label="Mese successivo"><i
-                                    class="fa-solid fa-chevron-right"></i></button>
-                        </div>
-                        <div class="calendar-days-header">
-                            <div class="day-name">Lun</div>
-                            <div class="day-name">Mar</div>
-                            <div class="day-name">Mer</div>
-                            <div class="day-name">Gio</div>
-                            <div class="day-name">Ven</div>
-                            <div class="day-name">Sab</div>
-                            <div class="day-name">Dom</div>
-                        </div>
-                        <div id="calendar-days-grid" class="calendar-grid">
-                            <!-- Giorni del mese generati da JS -->
-                        </div>
-                    </section>
-
-                </div>
+                <!-- Calendario -->
+                <section class="glass-panel calendar-section">
+                    <div class="calendar-header">
+                        <button id="prev-month" class="icon-btn" aria-label="Mese precedente"><i
+                                class="fa-solid fa-chevron-left"></i></button>
+                        <h2 id="calendar-month-year">Mese Anno</h2>
+                        <button id="next-month" class="icon-btn" aria-label="Mese successivo"><i
+                                class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                    <div class="calendar-days-header">
+                        <div class="day-name">Lun</div>
+                        <div class="day-name">Mar</div>
+                        <div class="day-name">Mer</div>
+                        <div class="day-name">Gio</div>
+                        <div class="day-name">Ven</div>
+                        <div class="day-name">Sab</div>
+                        <div class="day-name">Dom</div>
+                    </div>
+                    <div id="calendar-days-grid" class="calendar-grid">
+                        <!-- Giorni del mese generati da JS -->
+                    </div>
+                </section>
             </section> <!-- Fine tab-budget -->
 
             <!-- SCHEDA STATISTICHE -->

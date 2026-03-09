@@ -6,6 +6,7 @@
     --text-muted: #c8c8c8;
 
     --primary: #2b6f01;
+    --secondary: #ffffff;
     --primary-hover: #27ae60;
     --success: #10b981;
     --danger: #ef4444;
@@ -28,6 +29,15 @@ body {
     overflow-x: hidden;
     position: relative;
     line-height: 1.6;
+    letter-spacing: -1px;
+}
+
+.minimal-header .highlight {
+    background: linear-gradient(135deg, #10b981, #34d399);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    position: relative;
 }
 
 /* Background Animations */
@@ -139,6 +149,35 @@ header p {
 @media (max-width: 900px) {
     .dashboard {
         grid-template-columns: 1fr;
+    }
+}
+
+/* Specific Layout for Budget Tab */
+#tab-budget.active {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    grid-column: 1 / -1;
+}
+
+#tab-budget .input-section,
+#tab-budget .summary-section {
+    grid-column: span 1;
+}
+
+#tab-budget .calendar-section {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+    #tab-budget.active {
+        grid-template-columns: 1fr;
+    }
+
+    #tab-budget .input-section,
+    #tab-budget .summary-section,
+    #tab-budget .calendar-section {
+        grid-column: 1 / -1;
     }
 }
 
