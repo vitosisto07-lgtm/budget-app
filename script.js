@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    let currentUser = JSON.parse(sessionStorage.getItem('financeCurrentUser')) || null;
+    let currentUser = JSON.parse(localStorage.getItem('financeCurrentUser')) || null;
 
     // --- Elements ---
     // Inputs
@@ -366,7 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function doLogin(username, userId = null) {
         currentUser = { username, id: userId };
-        sessionStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
+        localStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
         localStorage.setItem('financeLastUser', username);
         
         let loggedUsers = JSON.parse(localStorage.getItem('financeLoggedUsers')) || [];
@@ -386,13 +386,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (loggedUsers.length > 0) {
                 currentUser = loggedUsers[0];
-                sessionStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
+                localStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
                 localStorage.setItem('financeLastUser', currentUser.username);
             } else {
-                sessionStorage.removeItem('financeCurrentUser');
+                localStorage.removeItem('financeCurrentUser');
             }
         } else {
-            sessionStorage.removeItem('financeCurrentUser');
+            localStorage.removeItem('financeCurrentUser');
         }
         location.reload();
     }
