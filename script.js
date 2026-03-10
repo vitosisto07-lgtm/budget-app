@@ -1,4 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Supabase Config ---
+    const SUPABASE_URL = "https://hkcsuledqzpzqlawygsg.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_QCxJNslnjEIcNncc9jTDpA_YP0O56dT";
+    const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
     // --- Auth State ---
     const authScreen = document.getElementById('auth-screen');
     const appContainer = document.querySelector('.app-container');
@@ -11,6 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const logoutBtn = document.getElementById('logout-btn');
     const authError = document.getElementById('auth-error');
     const currentUserNameDisplay = document.getElementById('current-user-name');
+
+
 
     let currentUser = JSON.parse(sessionStorage.getItem('financeCurrentUser')) || null;
 
@@ -169,10 +176,52 @@ document.addEventListener('DOMContentLoaded', () => {
     let monthlyBudgets = {};
     let events = {};
 
-    function loadUserData() {
+    async function loadUserData() {
         if (!currentUser) return;
-        monthlyBudgets = JSON.parse(localStorage.getItem(getStorageKey('financeMonthlyBudgets'))) || {};
-        events = JSON.parse(localStorage.getItem(getStorageKey('financeEvents'))) || {};
+
+        if (supabase && currentUser.id) {
+            // Carica da Supabase
+            const { data, error } = await supabase
+                .from('user_data')
+                .select('key, value')
+                .eq('user_id', currentUser.id);
+
+            if (!error && data) {
+                data.forEach(item => {
+                    if (item.key === 'budgets') monthlyBudgets = item.value;
+                    if (item.key === 'events') events = item.value;
+                    if (item.key === 'goals') {
+                        localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(item.value));
+                    }
+                    if (item.key === 'goals') {
+                        localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(item.value));
+                    }
+                });
+
+                // Salva anche localmente per performance/offline
+                localStorage.setItem(getStorageKey('financeMonthlyBudgets'), JSON.stringify(monthlyBudgets));
+                localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+            }
+        } else {
+            // Fallback locale
+            monthlyBudgets = JSON.parse(localStorage.getItem(getStorageKey('financeMonthlyBudgets'))) || {};
+            events = JSON.parse(localStorage.getItem(getStorageKey('financeEvents'))) || {};
+        }
+    }
+
+    async function syncData(key, value) {
+        if (!supabase || !currentUser || !currentUser.id) return;
+
+        const { error } = await supabase
+            .from('user_data')
+            .upsert({
+                user_id: currentUser.id,
+                key: key,
+                value: value,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id,key' });
+
+        if (error) console.error(`Error syncing ${key}:`, error.message);
     }
 
     // --- Auth Logic ---
@@ -192,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handleSignup() {
+    async function handleSignup() {
         const username = document.getElementById('signup-username').value.trim();
         const password = document.getElementById('signup-password').value.trim();
 
@@ -201,50 +250,112 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
-        if (users.find(u => u.username === username)) {
-            showAuthError("Username già esistente.");
-            return;
+        if (supabase) {
+            // Se l'utente ha già inserito una mail, usiamo quella. 
+            // Altrimenti ne creiamo una fittizia per Supabase.
+            const email = username.includes('@') ? username : `${username}@finance.local`;
+
+            const { data, error } = await supabase.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                    data: { username: username }
+                }
+            });
+
+            if (error) {
+                console.error("Signup Error:", error);
+                showAuthError("Errore registrazione: " + (error.message || "Errore sconosciuto"));
+            } else {
+                console.log("Signup Success:", data);
+                alert("Registrazione completata! Se hai disattivato 'Confirm Email' nelle impostazioni di Supabase, ora puoi accedere.");
+                toggleAuthForms(false);
+            }
+        } else {
+            // Fallback locale se supabase non è pronto
+            let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
+            if (users.find(u => u.username === username)) {
+                showAuthError("Username già esistente.");
+                return;
+            }
+            users.push({ username, password });
+            localStorage.setItem('financeUsers', JSON.stringify(users));
+            doLogin(username);
         }
-
-        users.push({ username, password });
-        localStorage.setItem('financeUsers', JSON.stringify(users));
-
-        // Auto login
-        doLogin(username);
     }
 
-    function handleLogin() {
+    async function handleLogin() {
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value.trim();
 
-        let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
-        const user = users.find(u => u.username === username && u.password === password);
+        if (supabase) {
+            const email = username.includes('@') ? username : `${username}@finance.local`;
 
-        if (user) {
-            doLogin(username);
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                showAuthError("Credenziali errate o errore: " + error.message);
+            } else {
+                // Prendi lo username dai metadata se possibile
+                const user = data.user;
+                const finalUsername = user.user_metadata.username || username;
+                doLogin(finalUsername, user.id);
+            }
         } else {
-            showAuthError("Username o password errati.");
+            let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
+            const user = users.find(u => u.username === username && u.password === password);
+            if (user) {
+                doLogin(username);
+            } else {
+                showAuthError("Username o password errati.");
+            }
         }
     }
 
-    function doLogin(username) {
-        currentUser = { username };
+    function doLogin(username, userId = null) {
+        currentUser = { username, id: userId };
         sessionStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
+        localStorage.setItem('financeLastUser', username);
+        
+        let loggedUsers = JSON.parse(localStorage.getItem('financeLoggedUsers')) || [];
+        if (!loggedUsers.find(u => u.username === username)) {
+            loggedUsers.push(currentUser);
+            localStorage.setItem('financeLoggedUsers', JSON.stringify(loggedUsers));
+        }
+
         checkAuthStatus();
     }
 
     function handleLogout() {
-        sessionStorage.removeItem('financeCurrentUser');
+        if (currentUser) {
+            let loggedUsers = JSON.parse(localStorage.getItem('financeLoggedUsers')) || [];
+            loggedUsers = loggedUsers.filter(u => u.username !== currentUser.username);
+            localStorage.setItem('financeLoggedUsers', JSON.stringify(loggedUsers));
+
+            if (loggedUsers.length > 0) {
+                currentUser = loggedUsers[0];
+                sessionStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
+                localStorage.setItem('financeLastUser', currentUser.username);
+            } else {
+                sessionStorage.removeItem('financeCurrentUser');
+            }
+        } else {
+            sessionStorage.removeItem('financeCurrentUser');
+        }
         location.reload();
     }
 
-    function checkAuthStatus() {
+    async function checkAuthStatus() {
+        document.querySelectorAll('.cancel-auth-container').forEach(el => el.classList.add('hidden'));
         if (currentUser) {
             authScreen.classList.add('hidden');
             appContainer.classList.remove('hidden');
             currentUserNameDisplay.textContent = currentUser.username;
-            loadUserData();
+            updateLoggedUsersList();
+            await loadUserData(); // Attendi il caricamento da Supabase
             loadCurrentMonthBudget();
             loadGoals();
             renderCalendar();
@@ -255,16 +366,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Auth Listeners
-    showSignupLink.addEventListener('click', (e) => { e.preventDefault(); toggleAuthForms(true); });
-    showLoginLink.addEventListener('click', (e) => { e.preventDefault(); toggleAuthForms(false); });
-    signupBtn.addEventListener('click', handleSignup);
-    loginBtn.addEventListener('click', handleLogin);
+    function updateLoggedUsersList() {
+        const listContainer = document.getElementById('logged-users-list');
+        if (!listContainer) return;
+        listContainer.innerHTML = '';
+        let loggedUsers = JSON.parse(localStorage.getItem('financeLoggedUsers')) || [];
+        
+        loggedUsers.forEach(user => {
+            const isCurrent = currentUser && currentUser.username === user.username;
+            const userBtn = document.createElement('button');
+            userBtn.className = 'dropdown-item';
+            userBtn.style.display = 'flex';
+            userBtn.style.alignItems = 'center';
+            userBtn.style.gap = '8px';
+            userBtn.innerHTML = `<i class="fa-solid fa-circle-user"></i> <span style="flex-grow: 1; text-align: left;">${user.username}</span> ${isCurrent ? '<i class="fa-solid fa-check" style="color: var(--success); font-size: 0.9em;"></i>' : ''}`;
+            
+            if (!isCurrent) {
+                userBtn.addEventListener('click', () => {
+                    doLogin(user.username, user.id);
+                    location.reload();
+                });
+            } else {
+                userBtn.style.cursor = 'default';
+                userBtn.style.opacity = '0.9';
+                userBtn.style.background = 'rgba(255, 255, 255, 0.05)';
+            }
+            listContainer.appendChild(userBtn);
+        });
+    }
+
+    // --- Auth Listeners ---
+    if (showSignupLink) showSignupLink.addEventListener('click', (e) => { e.preventDefault(); toggleAuthForms(true); });
+    if (showLoginLink) showLoginLink.addEventListener('click', (e) => { e.preventDefault(); toggleAuthForms(false); });
+    if (signupBtn) signupBtn.addEventListener('click', handleSignup);
+    if (loginBtn) loginBtn.addEventListener('click', handleLogin);
 
     // NEW: User Menu & Dropdown logic
     const userMenuToggle = document.getElementById('user-menu-toggle');
     const userDropdown = document.getElementById('user-dropdown');
     const logoutBtnDropdown = document.getElementById('logout-btn-dropdown');
+    const addAccountBtnDropdown = document.getElementById('add-account-btn-dropdown');
 
     if (userMenuToggle) {
         userMenuToggle.addEventListener('click', (e) => {
@@ -281,6 +422,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (logoutBtnDropdown) {
         logoutBtnDropdown.addEventListener('click', handleLogout);
     }
+    
+    if (addAccountBtnDropdown) {
+        addAccountBtnDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userDropdown.classList.add('hidden');
+            appContainer.classList.add('hidden');
+            authScreen.classList.remove('hidden');
+            document.querySelectorAll('.cancel-auth-container').forEach(el => el.classList.remove('hidden'));
+            toggleAuthForms(false);
+        });
+    }
+
+    document.querySelectorAll('.cancel-auth-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (currentUser) {
+                checkAuthStatus();
+            }
+        });
+    });
 
     // NEW: Theme Switching logic
     const themeBtns = document.querySelectorAll('.theme-btn');
@@ -440,6 +601,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Persist
                 localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
                 localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+                syncData('goals', goals);
+                syncData('events', events);
 
                 // Refresh
                 loadGoals();
@@ -467,6 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!isNaN(val) && val >= 0) {
                 goal.deposit = val;
                 localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
+                syncData('goals', goals);
                 loadGoals();
                 recalculateSummary();
             } else {
@@ -488,6 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
+        syncData('goals', goals);
         loadGoals();
         recalculateSummary();
     };
@@ -518,6 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         goals.push(newGoal);
         localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
+        syncData('goals', goals);
 
         goalNameInput.value = '';
         goalAmountInput.value = '';
@@ -549,6 +715,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let goals = JSON.parse(localStorage.getItem(getStorageKey('financeGoals')) || '[]');
         goals = goals.filter(g => g.id !== id);
         localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(goals));
+        syncData('goals', goals);
         loadGoals();
     };
 
@@ -608,6 +775,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         localStorage.setItem(getStorageKey('financeMonthlyBudgets'), JSON.stringify(monthlyBudgets));
+        syncData('budgets', monthlyBudgets);
     }
 
     function loadCurrentMonthBudget() {
@@ -668,6 +836,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
 
                     localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+                    syncData('events', events);
                     renderCalendar();
 
                     // Aggiorna valore precedente per non farlo ricalcolare al "prossimo" cambio
@@ -1263,8 +1432,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Inizializza Calendario e Budget di questo mese
-    loadCurrentMonthBudget();
-    renderCalendar();
-    initializeLastValues(); // Cattura i valori iniziali per il Magic Sync
+    // Inizializza lo stato dell'app
+    checkAuthStatus();
 });
