@@ -337,7 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 email: emailValue,
                 password: password,
                 options: {
-                    data: { 
+                    data: {
                         username: username,
                         real_email: emailValue
                     }
@@ -527,24 +527,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Settings UI Interactions ---
     const settingsBtnDropdown = document.getElementById('settings-btn-dropdown');
-    
+
     if (settingsBtnDropdown) {
         settingsBtnDropdown.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (userDropdown) userDropdown.classList.add('hidden');
-            
+
             // Navigate to settings tab via the hidden nav button
             const settingsTabNavBtn = document.querySelector('.nav-btn[data-tab="tab-settings"]');
             if (settingsTabNavBtn) settingsTabNavBtn.click();
-            
+
             // Populate data
             const settingsUsernameInput = document.getElementById('settings-username');
             const settingsEmailInput = document.getElementById('settings-email');
-            
+
             if (settingsUsernameInput && currentUser) {
                 settingsUsernameInput.value = currentUser.username || '';
             }
-            
+
             if (settingsEmailInput && currentUser) {
                 if (currentUser.email) {
                     settingsEmailInput.value = currentUser.email;
@@ -553,7 +553,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
                     const localUser = users.find(u => u.username === currentUser.username);
                     settingsEmailInput.value = localUser ? (localUser.email || '') : '';
-                    
+
                     // try fetch from supabase session
                     if (supabase) {
                         const { data: { user } } = await supabase.auth.getUser();
@@ -573,7 +573,7 @@ document.addEventListener('DOMContentLoaded', () => {
         saveSettingsBtn.addEventListener('click', async () => {
             const newUsername = document.getElementById('settings-username').value.trim();
             const settingsMsg = document.getElementById('settings-message');
-            
+
             if (!newUsername) {
                 settingsMsg.textContent = "L'username non può essere vuoto.";
                 settingsMsg.style.color = "var(--danger)";
@@ -584,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 settingsMsg.style.color = "var(--warning)";
                 return;
             }
-            
+
             // 1. Check LocalStorage `financeUsers` to avoid duplicates
             let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
             if (users.find(u => u.username === newUsername)) {
@@ -592,7 +592,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 settingsMsg.style.color = "var(--danger)";
                 return;
             }
-            
+
             const localUserIdx = users.findIndex(u => u.username === currentUser.username);
             if (localUserIdx >= 0) {
                 users[localUserIdx].username = newUsername;
@@ -608,7 +608,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error("Errore aggiornamento username su Supabase:", error);
                 }
             }
-            
+
             // Update reference in logged users
             let loggedUsers = JSON.parse(localStorage.getItem('financeLoggedUsers')) || [];
             const lUserIdx = loggedUsers.findIndex(u => u.username === currentUser.username);
@@ -616,11 +616,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 loggedUsers[lUserIdx].username = newUsername;
                 localStorage.setItem('financeLoggedUsers', JSON.stringify(loggedUsers));
             }
-            
+
             // Migrate keys for data (they use username prefixes!)
             const oldPrefix = currentUser.username + '_';
             const newPrefix = newUsername + '_';
-            
+
             const keysToMigrate = ['financeMonthlyBudgets', 'financeEvents', 'financeGoals'];
             keysToMigrate.forEach(k => {
                 const oldData = localStorage.getItem(oldPrefix + k);
@@ -634,10 +634,10 @@ document.addEventListener('DOMContentLoaded', () => {
             currentUser.username = newUsername;
             localStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
             localStorage.setItem('financeLastUser', newUsername);
-            
+
             settingsMsg.textContent = "Username aggiornato con successo!";
             settingsMsg.style.color = "var(--success)";
-            
+
             // Wait slightly and refresh
             setTimeout(() => {
                 location.reload();

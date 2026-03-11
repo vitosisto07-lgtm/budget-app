@@ -25,5 +25,8 @@
       "purpose": "maskable"
     }
   ],
-  "categories": ["finance", "lifestyle"]
+  "categories": [
+    "finance",
+    "lifestyle"
+  ]
 }
