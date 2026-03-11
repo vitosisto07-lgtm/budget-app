@@ -117,8 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return !goal.isCompleted ? sum + (parseFloat(goal.deposit) || 0) : sum;
         }, 0);
 
-        const totalExpenses = rent + bills + auto + food + subs + leisure + shopping + extra + totalGoalDeposits;
-        const remaining = income - totalExpenses;
+        const totalExpenses = rent + bills + auto + food + subs + leisure + shopping + extra;
+        const remaining = income - totalExpenses - totalGoalDeposits;
 
         // Mostra risultati
         summaryIncome.textContent = currency.format(income);
@@ -228,33 +228,64 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadUserData() {
         if (!currentUser) return;
 
+        // 1. Carica prima i dati dal LocalStorage (base locale)
+        const localBudgets = JSON.parse(localStorage.getItem(getStorageKey('financeMonthlyBudgets'))) || {};
+        const localEvents = JSON.parse(localStorage.getItem(getStorageKey('financeEvents'))) || {};
+        const localGoals = JSON.parse(localStorage.getItem(getStorageKey('financeGoals'))) || [];
+
+        // Inizializza lo stato con i dati locali per non perdere nulla in caso di errore
+        monthlyBudgets = localBudgets;
+        events = localEvents;
+
         if (supabase && currentUser.id) {
-            // Carica da Supabase
+            console.log("Tentativo di caricamento dati da Supabase per:", currentUser.username);
+
             const { data, error } = await supabase
                 .from('user_data')
                 .select('key, value')
                 .eq('user_id', currentUser.id);
 
-            if (!error && data) {
+            if (error) {
+                console.error("Errore caricamento Supabase:", error.message);
+                // In caso di errore, manteniamo i dati locali già caricati
+            } else if (data && data.length > 0) {
+                console.log("Dati ricevuti da Supabase:", data);
+                let foundBudgets = false;
+                let foundEvents = false;
+                let foundGoals = false;
+
                 data.forEach(item => {
-                    if (item.key === 'budgets') monthlyBudgets = item.value;
-                    if (item.key === 'events') events = item.value;
-                    if (item.key === 'goals') {
-                        localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(item.value));
+                    if (item.key === 'budgets') {
+                        monthlyBudgets = item.value;
+                        localStorage.setItem(getStorageKey('financeMonthlyBudgets'), JSON.stringify(monthlyBudgets));
+                        foundBudgets = true;
+                    }
+                    if (item.key === 'events') {
+                        events = item.value;
+                        localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+                        foundEvents = true;
                     }
                     if (item.key === 'goals') {
                         localStorage.setItem(getStorageKey('financeGoals'), JSON.stringify(item.value));
+                        foundGoals = true;
                     }
                 });
 
-                // Salva anche localmente per performance/offline
-                localStorage.setItem(getStorageKey('financeMonthlyBudgets'), JSON.stringify(monthlyBudgets));
-                localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+                // Se Supabase ha alcuni dati ma non altri, sincronizziamo quelli mancanti da locale a remoto?
+                // Per ora, se Supabase ha ALMENO una chiave, consideriamo Supabase la fonte di verità.
+                // Se invece Supabase è completamente vuoto per questo utente (length > 0 sopra ma magari chiavi diverse),
+                // o se mancano chiavi specifiche che abbiamo in locale, facciamo l'upload.
+                if (!foundBudgets && Object.keys(localBudgets).length > 0) syncData('budgets', localBudgets);
+                if (!foundEvents && Object.keys(localEvents).length > 0) syncData('events', localEvents);
+                if (!foundGoals && localGoals.length > 0) syncData('goals', localGoals);
+
+            } else {
+                console.log("Nessun dato trovato su Supabase. Sincronizzazione dati locali iniziali...");
+                // Se Supabase è vuoto, facciamo il primo upload dei dati locali
+                if (Object.keys(localBudgets).length > 0) syncData('budgets', localBudgets);
+                if (Object.keys(localEvents).length > 0) syncData('events', localEvents);
+                if (localGoals.length > 0) syncData('goals', localGoals);
             }
-        } else {
-            // Fallback locale
-            monthlyBudgets = JSON.parse(localStorage.getItem(getStorageKey('financeMonthlyBudgets'))) || {};
-            events = JSON.parse(localStorage.getItem(getStorageKey('financeEvents'))) || {};
         }
     }
 
@@ -291,24 +322,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleSignup() {
+        const emailInput = document.getElementById('signup-email');
+        const emailValue = emailInput ? emailInput.value.trim() : '';
         const username = document.getElementById('signup-username').value.trim();
         const password = document.getElementById('signup-password').value.trim();
 
-        if (!username || !password) {
+        if (!username || !password || (emailInput && !emailValue)) {
             showAuthError("Inserisci tutti i campi.");
             return;
         }
 
         if (supabase) {
-            // Se l'utente ha già inserito una mail, usiamo quella. 
-            // Altrimenti ne creiamo una fittizia per Supabase.
-            const email = username.includes('@') ? username : `${username}@finance.local`;
-
             const { data, error } = await supabase.auth.signUp({
-                email: email,
+                email: emailValue,
                 password: password,
                 options: {
-                    data: { username: username }
+                    data: { 
+                        username: username,
+                        real_email: emailValue
+                    }
                 }
             });
 
@@ -327,19 +359,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 showAuthError("Username già esistente.");
                 return;
             }
-            users.push({ username, password });
+            users.push({ username, password, email: emailValue });
             localStorage.setItem('financeUsers', JSON.stringify(users));
-            doLogin(username);
+            doLogin(username, null, emailValue);
         }
     }
 
     async function handleLogin() {
-        const username = document.getElementById('login-username').value.trim();
+        const email = document.getElementById('login-email').value.trim();
         const password = document.getElementById('login-password').value.trim();
 
-        if (supabase) {
-            const email = username.includes('@') ? username : `${username}@finance.local`;
+        if (!email || !password) {
+            showAuthError("Inserisci tutti i campi.");
+            return;
+        }
 
+        if (supabase) {
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: email,
                 password: password
@@ -350,25 +385,25 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 // Prendi lo username dai metadata se possibile
                 const user = data.user;
-                const finalUsername = user.user_metadata.username || username;
-                doLogin(finalUsername, user.id);
+                const finalUsername = user.user_metadata.username || email.split('@')[0];
+                doLogin(finalUsername, user.id, email);
             }
         } else {
             let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
-            const user = users.find(u => u.username === username && u.password === password);
+            const user = users.find(u => u.email === email && u.password === password);
             if (user) {
-                doLogin(username);
+                doLogin(user.username, null, email);
             } else {
-                showAuthError("Username o password errati.");
+                showAuthError("Email o password errati.");
             }
         }
     }
 
-    function doLogin(username, userId = null) {
-        currentUser = { username, id: userId };
+    function doLogin(username, userId = null, email = null) {
+        currentUser = { username, id: userId, email };
         localStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
         localStorage.setItem('financeLastUser', username);
-        
+
         let loggedUsers = JSON.parse(localStorage.getItem('financeLoggedUsers')) || [];
         if (!loggedUsers.find(u => u.username === username)) {
             loggedUsers.push(currentUser);
@@ -420,7 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!listContainer) return;
         listContainer.innerHTML = '';
         let loggedUsers = JSON.parse(localStorage.getItem('financeLoggedUsers')) || [];
-        
+
         loggedUsers.forEach(user => {
             const isCurrent = currentUser && currentUser.username === user.username;
             const userBtn = document.createElement('button');
@@ -429,7 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
             userBtn.style.alignItems = 'center';
             userBtn.style.gap = '8px';
             userBtn.innerHTML = `<i class="fa-solid fa-circle-user"></i> <span style="flex-grow: 1; text-align: left;">${user.username}</span> ${isCurrent ? '<i class="fa-solid fa-check" style="color: var(--success); font-size: 0.9em;"></i>' : ''}`;
-            
+
             if (!isCurrent) {
                 userBtn.addEventListener('click', () => {
                     doLogin(user.username, user.id);
@@ -471,7 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (logoutBtnDropdown) {
         logoutBtnDropdown.addEventListener('click', handleLogout);
     }
-    
+
     if (addAccountBtnDropdown) {
         addAccountBtnDropdown.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -479,7 +514,134 @@ document.addEventListener('DOMContentLoaded', () => {
             appContainer.classList.add('hidden');
             authScreen.classList.remove('hidden');
             document.querySelectorAll('.cancel-auth-container').forEach(el => el.classList.remove('hidden'));
+
+            // Clear current inputs and state to prevent residual data from being seen or saved
+            allBudgetInputs.forEach(input => { if (input) input.value = ''; });
+            monthlyBudgets = {};
+            events = {};
+            lastInputValues = {};
+
             toggleAuthForms(false);
+        });
+    }
+
+    // --- Settings UI Interactions ---
+    const settingsBtnDropdown = document.getElementById('settings-btn-dropdown');
+    
+    if (settingsBtnDropdown) {
+        settingsBtnDropdown.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (userDropdown) userDropdown.classList.add('hidden');
+            
+            // Navigate to settings tab via the hidden nav button
+            const settingsTabNavBtn = document.querySelector('.nav-btn[data-tab="tab-settings"]');
+            if (settingsTabNavBtn) settingsTabNavBtn.click();
+            
+            // Populate data
+            const settingsUsernameInput = document.getElementById('settings-username');
+            const settingsEmailInput = document.getElementById('settings-email');
+            
+            if (settingsUsernameInput && currentUser) {
+                settingsUsernameInput.value = currentUser.username || '';
+            }
+            
+            if (settingsEmailInput && currentUser) {
+                if (currentUser.email) {
+                    settingsEmailInput.value = currentUser.email;
+                } else {
+                    // local fallback
+                    let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
+                    const localUser = users.find(u => u.username === currentUser.username);
+                    settingsEmailInput.value = localUser ? (localUser.email || '') : '';
+                    
+                    // try fetch from supabase session
+                    if (supabase) {
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (user && user.email) {
+                            settingsEmailInput.value = user.email;
+                        } else if (user && user.user_metadata && user.user_metadata.real_email) {
+                            settingsEmailInput.value = user.user_metadata.real_email;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    const saveSettingsBtn = document.getElementById('save-settings-btn');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', async () => {
+            const newUsername = document.getElementById('settings-username').value.trim();
+            const settingsMsg = document.getElementById('settings-message');
+            
+            if (!newUsername) {
+                settingsMsg.textContent = "L'username non può essere vuoto.";
+                settingsMsg.style.color = "var(--danger)";
+                return;
+            }
+            if (newUsername === currentUser.username) {
+                settingsMsg.textContent = "L'username è uguale a quello attuale.";
+                settingsMsg.style.color = "var(--warning)";
+                return;
+            }
+            
+            // 1. Check LocalStorage `financeUsers` to avoid duplicates
+            let users = JSON.parse(localStorage.getItem('financeUsers')) || [];
+            if (users.find(u => u.username === newUsername)) {
+                settingsMsg.textContent = "Questo username è già in uso.";
+                settingsMsg.style.color = "var(--danger)";
+                return;
+            }
+            
+            const localUserIdx = users.findIndex(u => u.username === currentUser.username);
+            if (localUserIdx >= 0) {
+                users[localUserIdx].username = newUsername;
+                localStorage.setItem('financeUsers', JSON.stringify(users));
+            }
+
+            // 2. Update Supabase if active
+            if (supabase) {
+                const { data, error } = await supabase.auth.updateUser({
+                    data: { username: newUsername }
+                });
+                if (error) {
+                    console.error("Errore aggiornamento username su Supabase:", error);
+                }
+            }
+            
+            // Update reference in logged users
+            let loggedUsers = JSON.parse(localStorage.getItem('financeLoggedUsers')) || [];
+            const lUserIdx = loggedUsers.findIndex(u => u.username === currentUser.username);
+            if (lUserIdx >= 0) {
+                loggedUsers[lUserIdx].username = newUsername;
+                localStorage.setItem('financeLoggedUsers', JSON.stringify(loggedUsers));
+            }
+            
+            // Migrate keys for data (they use username prefixes!)
+            const oldPrefix = currentUser.username + '_';
+            const newPrefix = newUsername + '_';
+            
+            const keysToMigrate = ['financeMonthlyBudgets', 'financeEvents', 'financeGoals'];
+            keysToMigrate.forEach(k => {
+                const oldData = localStorage.getItem(oldPrefix + k);
+                if (oldData) {
+                    localStorage.setItem(newPrefix + k, oldData);
+                    localStorage.removeItem(oldPrefix + k);
+                }
+            });
+
+            // Update current user state
+            currentUser.username = newUsername;
+            localStorage.setItem('financeCurrentUser', JSON.stringify(currentUser));
+            localStorage.setItem('financeLastUser', newUsername);
+            
+            settingsMsg.textContent = "Username aggiornato con successo!";
+            settingsMsg.style.color = "var(--success)";
+            
+            // Wait slightly and refresh
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
         });
     }
 
@@ -631,10 +793,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     goal.isCompleted = true;
                 }
 
-                // 2. Add to Extra Expenses in Budget
-                const currentExtra = parseFloat(extraInput.value) || 0;
-                extraInput.value = currentExtra + val;
-                saveCurrentMonthBudget();
+                // 2. RECORDING ONLY: Add to Calendar without inflating 'extra' input automatically
+                // Se l'utente vuole che il deposito sia visto come spesa extra, può aggiungerlo manualmente nel tab budget.
+                // Inserirlo automaticamente raddoppia il peso sui risparmi pianificati.
 
                 // 3. Add to Calendar
                 const today = new Date();
@@ -855,18 +1016,14 @@ document.addEventListener('DOMContentLoaded', () => {
     allBudgetInputs.forEach(input => {
         if (input) {
             // Ricalcolo in tempo reale per lo sguardo veloce
-            input.addEventListener('input', recalculateSummary); 
+            input.addEventListener('input', recalculateSummary);
 
             input.addEventListener('change', () => {
                 const enteredVal = parseFloat(input.value) || 0;
-                const oldTotal = lastInputValues[input.id] || 0;
-                
-                // Se l'utente scrive 0, resettiamo? 
-                // Per ora sommiamo tutto quello che viene inserito.
-                const newTotal = oldTotal + enteredVal;
-                
-                input.value = newTotal;
-                lastInputValues[input.id] = newTotal;
+
+                // --- Logica Standard: Il valore inserito sostituisce il precedente ---
+                input.value = enteredVal;
+                lastInputValues[input.id] = enteredVal;
 
                 // --- Magic Sync: Automatic Event Recording ---
                 if (enteredVal !== 0) {
@@ -889,6 +1046,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 recalculateSummary();
             });
         }
+    });
+
+    // --- Data Deletion Logic for Budget Inputs ---
+    document.querySelectorAll('.clear-input-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.getAttribute('data-target');
+            const targetInput = document.getElementById(targetId);
+            if (targetInput) {
+                targetInput.value = '';
+                // Trigger event change per salvare e ricalcolare
+                targetInput.dispatchEvent(new Event('change'));
+
+                // Rimuovi anche gli eventi per la data corrispondente a oggi 
+                // in modo che cliccando la X si elimini anche la registrazione nel calendario
+                const today = new Date();
+                const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+                if (events[dateStr]) {
+                    events[dateStr] = events[dateStr].filter(e => e.category !== targetId);
+                    if (events[dateStr].length === 0) {
+                        delete events[dateStr];
+                    }
+                    localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+                    syncData('events', events);
+                    renderCalendar();
+                }
+            }
+        });
     });
 
 
@@ -1062,6 +1247,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             events[dateStr].splice(index, 1);
                             if (events[dateStr].length === 0) delete events[dateStr];
                             localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+                            syncData('events', events); // Aggiunto sync
                             renderCalendar();
                             openDayDetailsModal(dateStr, day, month, year); // Refresh della vista
                         }
@@ -1134,6 +1320,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Svuota gli eventi di questa giornata in modo robusto
                     delete events[selectedDateInfo];
                     localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+                    syncData('events', events); // Aggiunto sync
 
                     // Chiudi la modale dettaglio giorno dato che è vuota
                     if (dayDetailsModal) dayDetailsModal.classList.add('hidden');
@@ -1178,6 +1365,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 events[selectedDateInfo].push(newEvent);
                 localStorage.setItem(getStorageKey('financeEvents'), JSON.stringify(events));
+                syncData('events', events); // Aggiunto sync
                 renderCalendar();
                 if (eventModal) eventModal.classList.add('hidden');
 
@@ -1482,7 +1670,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (downloadDemoCsvBtn) {
         downloadDemoCsvBtn.addEventListener('click', () => {
-             const csvContent = 
+            const csvContent =
                 "Data,Descrizione,Importo\n" +
                 "01/03/2026,Stipendio mensile,2500.00\n" +
                 "02/03/2026,Affitto casa mensile,-800.00\n" +
@@ -1517,7 +1705,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let importedCategories = {
-            income: 0, rent: 0, bills: 0, auto: 0, 
+            income: 0, rent: 0, bills: 0, auto: 0,
             food: 0, subs: 0, leisure: 0, shopping: 0, extra: 0
         };
 
@@ -1526,14 +1714,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Saltiamo l'intestazione (i = 1)
         for (let i = 1; i < rows.length; i++) {
             const cols = rows[i].split(',').map(c => c.replace(/(^"|"$)/g, '').trim());
-            
+
             let desc = "";
             let amount = 0;
 
             if (cols.length >= 2) {
                 for (let j = cols.length - 1; j >= 0; j--) {
-                    let valStr = cols[j].replace(/[€"']/g, '').trim(); 
-                    
+                    let valStr = cols[j].replace(/[€"']/g, '').trim();
+
                     if (valStr.includes(',') && valStr.includes('.')) {
                         if (valStr.lastIndexOf(',') > valStr.lastIndexOf('.')) {
                             valStr = valStr.replace(/\./g, '').replace(',', '.');
@@ -1543,7 +1731,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else if (valStr.includes(',')) {
                         valStr = valStr.replace(',', '.');
                     }
-                    
+
                     let val = parseFloat(valStr);
                     if (!isNaN(val)) {
                         amount = val;
@@ -1552,7 +1740,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-            
+
             if (amount !== 0 && desc) {
                 const category = categorizeExpense(desc, amount);
                 if (category) {
@@ -1575,7 +1763,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             saveCurrentMonthBudget();
             recalculateSummary();
-            initializeLastValues(); 
+            initializeLastValues();
             alert(`Estratto conto importato con successo!\nSono stati elaborati ${importCount} movimenti e suddivisi automaticamente nelle categorie del budget.`);
         } else {
             alert('Nessun movimento valido o riconosciuto trovato nel CSV. Assicurati che contenga descrizioni e importi validi (separati da virgola).');
@@ -1622,7 +1810,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const smartImportTextArea = document.getElementById('smart-import-text');
     const smartImportReview = document.getElementById('smart-import-review');
     const smartImportResultsList = document.getElementById('smart-import-results-list');
-    
+
     // File upload elements
     const smartFileUpload = document.getElementById('smart-file-upload');
     const smartFileName = document.getElementById('smart-file-name');
@@ -1702,7 +1890,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveCurrentMonthBudget();
             recalculateSummary();
             initializeLastValues();
-            
+
             smartImportModal.classList.add('hidden');
             alert("Dati applicati con successo al tuo budget!");
         });
@@ -1711,7 +1899,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function processSmartImportText(text) {
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         let categories = {
-            income: 0, rent: 0, bills: 0, auto: 0, 
+            income: 0, rent: 0, bills: 0, auto: 0,
             food: 0, subs: 0, leisure: 0, shopping: 0, extra: 0
         };
         let items = [];
@@ -1721,25 +1909,25 @@ document.addEventListener('DOMContentLoaded', () => {
             // Regex migliorata per trovare importi (es. -45.90, +2500, 1.200,50)
             const amountRegex = /([-+]?\s?\d{1,3}(?:\.\d{3})*(?:,\d{2})|[-+]?\s?\d+(?:\.\d{2})?)/g;
             const matches = line.match(amountRegex);
-            
+
             if (matches) {
                 // Prendiamo l'ultimo match che solitamente è l'importo nell'estratto conto
                 let valStr = matches[matches.length - 1].replace(/\s/g, '');
-                
+
                 // Normalizzazione formato italiano (1.234,56 -> 1234.56)
                 if (valStr.includes(',') && valStr.includes('.')) {
                     valStr = valStr.replace(/\./g, '').replace(',', '.');
                 } else if (valStr.includes(',')) {
                     valStr = valStr.replace(',', '.');
                 }
-                
+
                 const amount = parseFloat(valStr);
-                
+
                 if (!isNaN(amount) && amount !== 0) {
                     // La descrizione è tutto ciò che rimane nella riga togliendo l'importo
                     let desc = line.replace(matches[matches.length - 1], '').trim();
                     desc = desc.replace(/^\d{2}\/\d{2}\/\d{4}/, '').trim(); // Togliamo eventuale data iniziale
-                    
+
                     const category = categorizeExpense(desc.toLowerCase(), amount);
                     if (category) {
                         categories[category] += Math.abs(amount);
@@ -1762,11 +1950,11 @@ document.addEventListener('DOMContentLoaded', () => {
             div.style.padding = '8px 0';
             div.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
             div.style.fontSize = '0.9rem';
-            
+
             const isPositive = item.amount > 0;
             const color = isPositive ? 'var(--success)' : 'white';
             const catName = categoryNames[item.category] || 'Extra';
-            
+
             div.innerHTML = `
                 <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 10px;">
                     <span style="color: var(--text-muted); font-size: 0.75rem; display: block; text-transform: uppercase;">${catName}</span>

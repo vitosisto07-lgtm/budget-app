@@ -40,8 +40,8 @@
             <div id="login-form">
                 <h3>Accedi</h3>
                 <div class="input-group">
-                    <label for="login-username">Username</label>
-                    <input type="text" id="login-username" placeholder="Inserisci il tuo username">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" placeholder="Inserisci la tua email">
                 </div>
                 <div class="input-group">
                     <label for="login-password">Password</label>
@@ -60,6 +60,10 @@
 
             <div id="signup-form" class="hidden">
                 <h3>Registrati</h3>
+                <div class="input-group">
+                    <label for="signup-email">Email</label>
+                    <input type="email" id="signup-email" placeholder="Inserisci la tua email">
+                </div>
                 <div class="input-group">
                     <label for="signup-username">Username</label>
                     <input type="text" id="signup-username" placeholder="Scegli un username">
@@ -114,6 +118,9 @@
                             </button>
                             <div class="dropdown-divider"></div>
                             <div class="dropdown-header">Opzioni Account</div>
+                            <button id="settings-btn-dropdown" class="dropdown-item">
+                                <i class="fa-solid fa-gear"></i> Impostazioni
+                            </button>
                             <button id="logout-btn-dropdown" class="dropdown-item">
                                 <i class="fa-solid fa-right-from-bracket"></i> Esci
                             </button>
@@ -137,6 +144,7 @@
                 <button class="nav-btn active" data-tab="tab-home"><i class="fa-solid fa-house"></i> Home</button>
                 <button class="nav-btn" data-tab="tab-budget"><i class="fa-solid fa-calculator"></i> Budget &
                     Calendario</button>
+                <button class="nav-btn" data-tab="tab-settings" style="display: none;">Impostazioni</button>
                 <button class="nav-btn" data-tab="tab-goals"><i class="fa-solid fa-bullseye"></i> Obiettivi di
                     Risparmio</button>
                 <button class="nav-btn" data-tab="tab-stats"><i class="fa-solid fa-chart-line"></i> Statistiche
@@ -222,6 +230,7 @@
                         <div class="input-wrapper">
                             <i class="fa-solid fa-euro-sign"></i>
                             <input type="number" id="income" placeholder="Es. 2000" min="0">
+                            <button class="clear-input-btn" data-target="income" aria-label="Azzera"><i class="fa-solid fa-xmark"></i></button>
                         </div>
                     </div>
 
@@ -230,35 +239,59 @@
                     <div class="expenses-grid">
                         <div class="input-group">
                             <label for="rent"><i class="fa-solid fa-house"></i> Affitto/Mutuo</label>
-                            <input type="number" id="rent" class="expense-input" placeholder="0" min="0">
+                            <div class="input-wrapper">
+                                <input type="number" id="rent" class="expense-input" placeholder="0" min="0">
+                                <button class="clear-input-btn" data-target="rent" aria-label="Azzera"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
                         </div>
                         <div class="input-group">
                             <label for="bills"><i class="fa-solid fa-bolt"></i> Bollette</label>
-                            <input type="number" id="bills" class="expense-input" placeholder="0" min="0">
+                            <div class="input-wrapper">
+                                <input type="number" id="bills" class="expense-input" placeholder="0" min="0">
+                                <button class="clear-input-btn" data-target="bills" aria-label="Azzera"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
                         </div>
                         <div class="input-group">
                             <label for="auto"><i class="fa-solid fa-car"></i> Auto/Trasporti</label>
-                            <input type="number" id="auto" class="expense-input" placeholder="0" min="0">
+                            <div class="input-wrapper">
+                                <input type="number" id="auto" class="expense-input" placeholder="0" min="0">
+                                <button class="clear-input-btn" data-target="auto" aria-label="Azzera"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
                         </div>
                         <div class="input-group">
                             <label for="food"><i class="fa-solid fa-basket-shopping"></i> Spesa/Cibo</label>
-                            <input type="number" id="food" class="expense-input" placeholder="0" min="0">
+                            <div class="input-wrapper">
+                                <input type="number" id="food" class="expense-input" placeholder="0" min="0">
+                                <button class="clear-input-btn" data-target="food" aria-label="Azzera"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
                         </div>
                         <div class="input-group">
                             <label for="subs"><i class="fa-solid fa-rotate"></i> Abbonamenti</label>
-                            <input type="number" id="subs" class="expense-input" placeholder="0" min="0">
+                            <div class="input-wrapper">
+                                <input type="number" id="subs" class="expense-input" placeholder="0" min="0">
+                                <button class="clear-input-btn" data-target="subs" aria-label="Azzera"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
                         </div>
                         <div class="input-group">
                             <label for="leisure"><i class="fa-solid fa-gamepad"></i> Svago</label>
-                            <input type="number" id="leisure" class="expense-input" placeholder="0" min="0">
+                            <div class="input-wrapper">
+                                <input type="number" id="leisure" class="expense-input" placeholder="0" min="0">
+                                <button class="clear-input-btn" data-target="leisure" aria-label="Azzera"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
                         </div>
                         <div class="input-group">
                             <label for="shopping"><i class="fa-solid fa-bag-shopping"></i> Shopping</label>
-                            <input type="number" id="shopping" class="expense-input" placeholder="0" min="0">
+                            <div class="input-wrapper">
+                                <input type="number" id="shopping" class="expense-input" placeholder="0" min="0">
+                                <button class="clear-input-btn" data-target="shopping" aria-label="Azzera"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
                         </div>
                         <div class="input-group">
                             <label for="extra"><i class="fa-solid fa-plus"></i> Extra</label>
-                            <input type="number" id="extra" class="expense-input" placeholder="0" min="0">
+                            <div class="input-wrapper">
+                                <input type="number" id="extra" class="expense-input" placeholder="0" min="0">
+                                <button class="clear-input-btn" data-target="extra" aria-label="Azzera"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
                         </div>
 
                     </div>
@@ -404,6 +437,36 @@
                     <div id="monthly-savings-list" class="monthly-savings-grid"
                         style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
                         <!-- Elenco generato da JS -->
+                    </div>
+                </div>
+            </section>
+
+            <section id="tab-settings" class="tab-pane hidden glass-panel" style="grid-column: 1 / -1;">
+                <h2><i class="fa-solid fa-gear"></i> Impostazioni Account</h2>
+                
+                <div class="settings-container" style="max-width: 600px; margin-top: 2rem;">
+                    <div class="settings-card glass-panel" style="padding: 2rem; border-radius: 12px;">
+                        <h3>Profilo Utente</h3>
+                        <p style="color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem;">Modifica le informazioni del tuo account. Queste modifiche saranno visibili in tutte le sezioni dell'app.</p>
+                        
+                        <div class="input-group" style="margin-bottom: 1.5rem;">
+                            <label for="settings-email">Indirizzo Email (Non modificabile)</label>
+                            <div class="input-wrapper" style="background: rgba(255,255,255,0.05);">
+                                <i class="fa-solid fa-envelope" style="color: var(--text-muted);"></i>
+                                <input type="email" id="settings-email" disabled style="color: var(--text-muted); cursor: not-allowed;">
+                            </div>
+                        </div>
+
+                        <div class="input-group" style="margin-bottom: 2rem;">
+                            <label for="settings-username">Username</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-user"></i>
+                                <input type="text" id="settings-username" placeholder="Il tuo username attuale">
+                            </div>
+                        </div>
+
+                        <button id="save-settings-btn" class="primary-btn"><i class="fa-solid fa-floppy-disk"></i> Salva Modifiche</button>
+                        <div id="settings-message" style="margin-top: 1rem; text-align: center; font-weight: 500;"></div>
                     </div>
                 </div>
             </section>
